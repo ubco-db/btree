@@ -181,7 +181,7 @@ void btreePrintNodeBuffer(btreeState *state, int pageNum, int depth, void *buffe
 			int32_t val = *((int32_t*) (buffer + state->headerSize + state->recordSize * c + state->keySize));
 			printf("%*cKey: %d Value: %d\n", depth*3+2, ' ', key, val);			
 		}	
-		*/				
+		*/			
 	}
 }
 

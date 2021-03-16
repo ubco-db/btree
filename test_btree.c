@@ -36,7 +36,7 @@
 #include <string.h>
 
 #include "btree.h"
-
+#include "randomseq.h"
 
 int32_t* randomArrayShuffle(size_t n)
 {
@@ -82,6 +82,46 @@ int32_t checkValues(btreeState *state, void* recordBuffer, int32_t* vals, int n)
  */ 
 void runalltests_btree()
 {
+    
+             
+    // int32_t *vals = randomArrayShuffle(n);
+    size_t errors = 0;
+    
+    srand(1);
+    randomseqState rnd;
+    rnd.size = 100000;
+    size_t n = 100000; 
+    rnd.prime = 0;
+
+    
+    randomseqInit(&rnd);
+    uint32_t *vals = malloc(n * sizeof(uint32_t));
+
+    for (int i=0; i < n; i++)
+    {
+        vals[i] = randomseqNext(&rnd);
+        // printf("%d\n", vals[i]);
+        // See if number exists 
+        for (int j=0; j < i; j++)
+            if (vals[j] == vals[i])
+            {   printf("Error: Number generated: %d\n", vals[j]);
+           //     return;
+            }
+    }
+
+    // Check if can regenerate sequence 
+    srand(1);
+    randomseqInit(&rnd);
+    for (int i=0; i < n; i++)
+    {
+        uint32_t tmp = randomseqNext(&rnd);
+       //  printf("%d %d\n", tmp, vals[i]);
+        if (tmp != vals[i])
+            printf("ERROR with sequence.\n");
+    }
+    
+
+   
     int8_t M = 3;        
    
     /* Configure buffer */
@@ -132,15 +172,14 @@ void runalltests_btree()
         recordBuffer[i + sizeof(int32_t)] = 0;
     }
 
-    clock_t start = clock();
-    
-    size_t n = 1000000;          
-    int32_t *vals = randomArrayShuffle(n);
-    size_t errors = 0;
-    
+    clock_t start = clock();    
+
+    srand(1);
+    randomseqInit(&rnd);
+
     for (i = 0; i < n ; i++)
     {   
-        id_t v = vals[i]; 
+        id_t v = randomseqNext(&rnd);// vals[i]; 
         
        // printf("\n****STARTING KEY: %d\n",v);
         // btreePrint(state);    
@@ -177,7 +216,7 @@ void runalltests_btree()
             return;
         }
         */
-        if (i % 50000 == 0)
+        if (i % 10000 == 0)
         {           
             printf("Num: %d KEY: %d\n", i, v);
             //btreePrint(state);               
@@ -195,10 +234,14 @@ void runalltests_btree()
 
     printf("\nVerifying and searching for all values.\n");
     start = clock();
+
+    srand(1);
+    randomseqInit(&rnd);
+
     /* Verify that can find all values inserted */    
     for (i = 0; i < n; i++) 
     { 
-        int32_t key = vals[i];
+        int32_t key = randomseqNext(&rnd);// vals[i];
         int8_t result = btreeGet(state, &key, recordBuffer);
         if (result != 0) 
         {   errors++;
