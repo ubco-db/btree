@@ -99,8 +99,8 @@ void btreeInit(btreeState *state)
 	state->maxInteriorRecordsPerPage = (state->buffer->pageSize - state->headerSize - sizeof(id_t)) / (state->keySize+sizeof(id_t));
 
 	/* Hard-code for testing */
-	state->maxRecordsPerPage = 5;
-	state->maxInteriorRecordsPerPage = 4;	
+	// state->maxRecordsPerPage = 5;
+	// state->maxInteriorRecordsPerPage = 4;	
 
 	state->levels = 1;
 	state->numMappings = 0;

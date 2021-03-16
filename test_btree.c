@@ -134,7 +134,7 @@ void runalltests_btree()
 
     clock_t start = clock();
     
-    size_t n = 500;          
+    size_t n = 1000000;          
     int32_t *vals = randomArrayShuffle(n);
     size_t errors = 0;
     
@@ -170,13 +170,14 @@ void runalltests_btree()
             btreePrintMappings(state);         
         }
         */
+       /*
         if (checkValues(state, recordBuffer, vals, i) > 0)
         {   printf("Error finding value. Key: %d\n", v);
             btreePrint(state);   
             return;
         }
-        
-        if (i % 1000 == 0)
+        */
+        if (i % 50000 == 0)
         {           
             printf("Num: %d KEY: %d\n", i, v);
             //btreePrint(state);               
@@ -185,7 +186,7 @@ void runalltests_btree()
 
     clock_t end = clock();   
 
-    btreePrint(state);     
+    // btreePrint(state);     
     
     printStats(state->buffer);
 

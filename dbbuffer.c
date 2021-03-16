@@ -65,6 +65,64 @@ void dbbufferInit(dbbuffer *state)
 }
 
 /**
+@brief      Reads page to a particular buffer number. Returns pointer to buffer if success.
+@param     	state
+                DBbuffer state structure
+@param     	pageNum
+                Physical page id (number)
+@param		bufferNum
+				Buffer to read into
+@return		Returns pointer to buffer page or NULL if error.
+*/
+void* readPageBufferInternal(dbbuffer *state, id_t pageNum, count_t bufferNum)
+{
+	void *buf = state->buffer + bufferNum * state->pageSize;	
+	FILE* fp = state->file;
+  
+    /* Seek to page location in file */
+    fseek(fp, pageNum*state->pageSize, SEEK_SET);
+
+    /* Read page into start of buffer 1 */   
+    if (0 ==  fread(buf, state->pageSize, 1, fp))
+    	return NULL;       
+    
+    state->numReads++;
+	   
+	return buf;
+}
+
+/**
+@brief      Reads page to a particular buffer number. Returns pointer to buffer if success.
+@param     	state
+                DBbuffer state structure
+@param     	pageNum
+                Physical page id (number)
+@param		bufferNum
+				Buffer to read into
+@return		Returns pointer to buffer page or NULL if error.
+*/
+void* readPageBuffer(dbbuffer *state, id_t pageNum, count_t bufferNum)
+{
+	/* Check to see if page is currently in buffer */
+	for (count_t i=1; i < state->numPages; i++)
+	{
+		if (state->status[i] == pageNum && pageNum != 0)
+		{
+			state->bufferHits++;
+			void* buf = state->buffer + state->pageSize*i;
+			state->lastHit = state->status[i];
+			if (i != bufferNum)
+			{	memcpy(state->buffer + bufferNum*state->pageSize, buf, state->pageSize);
+				return state->buffer + bufferNum*state->pageSize;
+			}
+			return buf;
+		}
+	}
+	return readPageBufferInternal(state, pageNum, bufferNum);	
+}
+
+
+/**
 @brief      Reads page either from buffer or from storage. Returns pointer to buffer if success.
 @param     	state
                 DBbuffer state structure
@@ -144,35 +202,10 @@ void* readPage(dbbuffer *state, id_t pageNum)
 	}
 	    
 	state->status[i] = pageNum;
-	return readPageBuffer(state, pageNum, i);
+	return readPageBufferInternal(state, pageNum, i);
 }
 
-/**
-@brief      Reads page to a particular buffer number. Returns pointer to buffer if success.
-@param     	state
-                DBbuffer state structure
-@param     	pageNum
-                Physical page id (number)
-@param		bufferNum
-				Buffer to read into
-@return		Returns pointer to buffer page or NULL if error.
-*/
-void* readPageBuffer(dbbuffer *state, id_t pageNum, count_t bufferNum)
-{
-	void *buf = state->buffer + bufferNum * state->pageSize;	
-	FILE* fp = state->file;
-  
-    /* Seek to page location in file */
-    fseek(fp, pageNum*state->pageSize, SEEK_SET);
 
-    /* Read page into start of buffer 1 */   
-    if (0 ==  fread(buf, state->pageSize, 1, fp))
-    	return NULL;       
-    
-    state->numReads++;
-	   
-	return buf;
-}
 
 /**
 @brief      Writes page to storage. Returns physical page id if success. -1 if failure.
