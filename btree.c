@@ -90,8 +90,8 @@ void btreeInit(btreeState *state)
 	state->compareKey = uint32Compare;
 
 	/* Calculate block header size */
-	/* Header size fixed: 10 bytes: 4 byte id, 4 byte prev index, 4 byte next index, 4 for record count. */	
-	state->headerSize = 16;
+	/* Header size fixed: 8 bytes: 4 byte id and 4 for record count. */	
+	state->headerSize = 8;
 
 	/* Calculate number of records per page */
 	state->maxRecordsPerPage = (state->buffer->pageSize - state->headerSize) / state->recordSize;
@@ -106,13 +106,9 @@ void btreeInit(btreeState *state)
 	state->numMappings = 0;
 	state->numNodes = 1;
 
-	/* Calculate maximum number of mappings */
-	state->maxMappings = state->mappingBufferSize / (2*sizeof(id_t));		/* TODO: May want to add overhead to this calculation */
-	
 	/* Create and write empty root node */
 	void *buf = initBufferPage(state->buffer, 0);
 	BTREE_SET_ROOT(buf);	
-	BTREE_SET_NEXT(buf, PREV_ID_CONSTANT);	
 	state->activePath[0] = writePage(state->buffer, buf);		/* Store root location */		
 }
 
@@ -145,160 +141,6 @@ void* btreeGetMaxKey(btreeState *state, void *buffer)
 }
 
 /**
-@brief     	Gets a page mapping index or returns -1 if no mapping.
-@param     	state
-                btree algorithm state structure
-@param		pageId
-				physical page index
-*/
-int16_t btreeGetMappingIndex(btreeState *state, id_t pageId)
-{	
-	btreemapping *mappings = (btreemapping*) state->mappingBuffer;
-
-	for (int i=0; i < state->numMappings; i++)
-	{	
-		if (mappings[i].prevPage == pageId)
-			return i;		
-	}
-	
-	/* Return -1 if mapping not found */
-	return -1;
-}
-
-/**
-@brief      Reads page either from buffer or from storage. Returns pointer to buffer if success.
-			This version will track down next pages if required. (On-disk mapping)
-@param     	state
-                DBbuffer state structure
-@param     	pageNum
-                Physical page id (number)
-@return		Returns pointer to buffer page or NULL if error.
-*/
-void* readPageNext(btreeState *state, id_t pageNum)
-{
-	void *buf = readPage(state->buffer, pageNum);
-	if (buf == NULL)
-		return NULL;
-	id_t nextId = BTREE_GET_NEXT(buf);
-	while (nextId != PREV_ID_CONSTANT)
-	{	/* Have a next page. Read it. */
-		// printf("READING next page: %d PageNum: %d\n", nextId, pageNum);
-		buf = readPage(state->buffer, nextId);
-		if (buf == NULL)
-			return NULL;
-		nextId = BTREE_GET_NEXT(buf);
-	}
-	return buf;
-}
-
-/**
-@brief      Reads page either from buffer or from storage. Returns pointer to buffer if success.
-			This version will track down next pages if required. (On-disk mapping)
-@param     	state
-                DBbuffer state structure
-@param     	pageNum
-                Physical page id (number)
-@return		Returns pointer to buffer page or NULL if error.
-*/
-void* readPageBufferNext(btreeState *state, id_t pageNum, count_t bufferNum)
-{
-	void *buf = readPageBuffer(state->buffer, pageNum, bufferNum);
-	if (buf == NULL)
-		return NULL;
-	id_t nextId = BTREE_GET_NEXT(buf);
-	while (nextId != PREV_ID_CONSTANT)
-	{	/* Have a next page. Read it. */
-		buf = readPageBuffer(state->buffer, nextId, bufferNum);
-		if (buf == NULL)
-			return NULL;
-		nextId = BTREE_GET_NEXT(buf);
-	}
-	return buf;
-}
-
-
-/**
-@brief     	Adds a page mapping.
-@param     	state
-                btree algorithm state structure
-@param		prevPage
-				previous physical page index
-@param		currPage
-				current physical page index
-*/
-int8_t btreeAddMapping(btreeState *state, id_t prevPage, id_t currPage)
-{
-	btreemapping *mappings = (btreemapping*) state->mappingBuffer;
-
-	/* Must find mapping first and overwrite it if it exists */
-	int16_t mappingIdx = btreeGetMappingIndex(state, prevPage);	
-	if (mappingIdx != -1)
-	{			
-			mappings[mappingIdx].currPage = currPage;
-			return 0;			
-	}
-
-	/* Check for capacity */
-	if (state->numMappings >= state->maxMappings)
-		return -1;		/* No space for another mapping */
-
-	/* Add new mapping */	
-	/* Implemented as unsorted array for now */
-	mappings[state->numMappings].prevPage = prevPage;
-	mappings[state->numMappings].currPage = currPage;
-	state->numMappings++;
-
-	// printf("Added mapping. Prev: %d  Curr: %d\n", prevPage, currPage);
-	/* Return failure when full although add actually occurred. Simplifies updating mappings if new mapping is in structure. */
-	if (state->numMappings == state->maxMappings)
-		return -1;
-	return 0;
-}
-
-/**
-@brief     	Deletes a page mapping.
-@param     	state
-                btree algorithm state structure
-@param		prevPage
-				previous physical page index
-*/
-int8_t btreeDeleteMapping(btreeState *state, id_t prevPage)
-{	
-	btreemapping *mappings = (btreemapping*) state->mappingBuffer;
-
-	int16_t mappingIdx = btreeGetMappingIndex(state, prevPage);	
-	if (mappingIdx != -1)
-	{			
-		state->numMappings--;
-		/* Replace deleted mapping with last mapping */
-		mappings[mappingIdx].prevPage = mappings[state->numMappings].prevPage;
-		mappings[mappingIdx].currPage = mappings[state->numMappings].currPage;
-		return 0;			
-	}
-
-	return 0;
-}
-
-/**
-@brief     	Gets a page mapping or returns current page number if no mapping.
-@param     	state
-                btree algorithm state structure
-@param		pageId
-				physical page index
-*/
-id_t btreeGetMapping(btreeState *state, id_t pageId)
-{	
-	btreemapping *mappings = (btreemapping*) state->mappingBuffer;
-
-	int16_t mappingIdx = btreeGetMappingIndex(state, pageId);	
-	if (mappingIdx != -1)
-		return mappings[mappingIdx].currPage;	
-	
-	/* Return original page if no mapping */
-	return pageId;
-}
-
-/**
 @brief     	Print a node in an in-memory buffer.
 @param     	state
                 btree algorithm state structure
@@ -315,39 +157,31 @@ void btreePrintNodeBuffer(btreeState *state, int pageNum, int depth, void *buffe
 
 	if (BTREE_IS_INTERIOR(buffer) && state->levels != 1)
 	{		
-		printf("%*cId: %d Loc: %d Prev: %d Next %d Cnt: %d [%d, %d]\n", depth*3, ' ', BTREE_GET_ID(buffer), pageNum, BTREE_GET_PREV(buffer), BTREE_GET_NEXT(buffer), count, (BTREE_IS_ROOT(buffer)), BTREE_IS_INTERIOR(buffer));		
+		printf("%*cId: %d Loc: %d Cnt: %d [%d, %d]\n", depth*3, ' ', BTREE_GET_ID(buffer), pageNum, count, (BTREE_IS_ROOT(buffer)), BTREE_IS_INTERIOR(buffer));		
 		/* Print data records (optional) */	
 		printf("%*c", depth*3+2, ' ');	
 		for (c=0; c < count && c < state->maxInteriorRecordsPerPage; c++)
 		{			
 			int32_t key = *((int32_t*) (buffer+state->keySize * c + state->headerSize));
-			int32_t val = *((int32_t*) (buffer+state->keySize * state->maxInteriorRecordsPerPage + state->headerSize + c*sizeof(id_t)));
-			id_t mapVal = btreeGetMapping(state, val);			
-			printf(" (%d, %d", key, val);			
-			if (mapVal != val)
-				printf(" [%d]", mapVal);	
-			printf(")");
+			int32_t val = *((int32_t*) (buffer+state->keySize * state->maxInteriorRecordsPerPage + state->headerSize + c*sizeof(id_t)));			
+			printf(" (%d, %d)", key, val);						
 		}
 		/* Print last pointer */
-		int32_t val = *((int32_t*) (buffer+state->keySize * state->maxInteriorRecordsPerPage + state->headerSize + c*sizeof(id_t)));
-		id_t mapVal = btreeGetMapping(state, val);	
-		printf(" (, %d", val);
-		if (mapVal != val)
-			printf(" [%d]", mapVal);
-		printf(")\n");
+		int32_t val = *((int32_t*) (buffer+state->keySize * state->maxInteriorRecordsPerPage + state->headerSize + c*sizeof(id_t)));		
+		printf(" (, %d)", val);		
 	}
 	else
 	{		
-		printf("%*cId: %d Loc: %d Prev: %d Next: %d Cnt: %d (%d, %d)\n", depth*3, ' ', BTREE_GET_ID(buffer), pageNum, BTREE_GET_PREV(buffer), BTREE_GET_NEXT(buffer), count, *((int32_t*) btreeGetMinKey(state, buffer)), *((int32_t*) btreeGetMaxKey(state, buffer)));
+		printf("%*cId: %d Loc: %d Cnt: %d (%d, %d)\n", depth*3, ' ', BTREE_GET_ID(buffer), pageNum, count, *((int32_t*) btreeGetMinKey(state, buffer)), *((int32_t*) btreeGetMaxKey(state, buffer)));
 		/* Print data records (optional) */
-		
+		/*
 		for (int c=0; c < count; c++)
 		{
 			int32_t key = *((int32_t*) (buffer + state->headerSize + state->recordSize * c));
 			int32_t val = *((int32_t*) (buffer + state->headerSize + state->recordSize * c + state->keySize));
 			printf("%*cKey: %d Value: %d\n", depth*3+2, ' ', key, val);			
 		}	
-				
+		*/				
 	}
 }
 
@@ -362,9 +196,7 @@ void btreePrintNodeBuffer(btreeState *state, int pageNum, int depth, void *buffe
 */
 void btreePrintNode(btreeState *state, int pageNum, int depth)
 {
-	pageNum = btreeGetMapping(state, pageNum);
-
-	void* buf = readPageNext(state, pageNum);
+	void* buf = readPage(state->buffer, pageNum);
 	if (buf == NULL)
 	{
 		printf("ERROR printing tree. PageNum: %d\n", pageNum);
@@ -384,7 +216,7 @@ void btreePrintNode(btreeState *state, int pageNum, int depth)
 			int32_t val = *((int32_t*) (buf+state->keySize * state->maxInteriorRecordsPerPage + state->headerSize + c*sizeof(id_t)));
 			
 			btreePrintNode(state, val, depth+1);				
-			buf = readPageNext(state, pageNum);			
+			buf = readPage(state->buffer, pageNum);			
 		}	
 		/* Print last child node if active */
 		int32_t val = *((int32_t*) (buf+state->keySize * state->maxInteriorRecordsPerPage + state->headerSize + c*sizeof(id_t)));
@@ -420,131 +252,6 @@ void btreePrint(btreeState *state)
 }
 
 /**
-@brief     	Updates the pointers to the current node with latest mappings and removes mapping.
-@param     	state
-                btree algorithm state structure
-*/
-void btreePrintMappings(btreeState *state)
-{
-	/* Prints all active mappings */
-	btreemapping *mappings = (btreemapping*) state->mappingBuffer;
-
-	printf("Mappings:\n");
-	
-	for (int i=0; i < state->numMappings; i++)
-	{	
-		printf("%d --> %d\n", mappings[i].prevPage, mappings[i].currPage);		
-	}	
-	
-	printf("Mapping count: %d  Max: %d\n", state->numMappings, state->maxMappings);	
-	printf("Node count: %d\n", state->numNodes);
-}
-
-/**
-@brief     	Updates the pointers to the current node with latest mappings and removes mapping.
-@param     	state
-                btree algorithm state structure
-@param     	buf
-                Buffer containing page
-@param     	start
-                first pointer index to update
-@param     	end
-                last pointer index to update (inclusive)
-@return		Return 0 if success. Non-zero value if error.
-*/
-void btreeUpdatePointers(btreeState *state, void *buf, count_t start, count_t end)
-{	
-	// btreePrintMappings(state);
-
-	/* Update any stale pointers and remove mappings */
-	void *ptrOffset = buf + state->headerSize + state->keySize * state->maxInteriorRecordsPerPage; 
-	for (count_t i=start; i <= end; i++)
-	{		
-		id_t childIdx = *((id_t*) (ptrOffset + sizeof(id_t) * (i)));
-		id_t newIdx = btreeGetMapping(state, childIdx);
-		if (newIdx != childIdx)
-		{	/* Update pointer and remove mapping */
-			*((id_t*) (ptrOffset + sizeof(id_t) * (i))) = newIdx;
-			btreeDeleteMapping(state, childIdx);
-			// printf("Delete mapping for node: %d  Prev: %d Curr: %d\n", BTREE_GET_ID(buf), childIdx, newIdx);
-		}
-	}
-	// btreePrintMappings(state);
-}
-
-/**
-@brief     	Sets previous id in buffer based on current value or mapping value.
-@param     	state
-                btree algorithm state structure
-@param     	buf
-                Buffer containing page
-@param		currId
-				Current id of node
-@return    	previous id stored/used in page
-*/
-id_t btreeUpdatePrev(btreeState *state, void *buf, id_t currId)
-{
-	id_t prevId = BTREE_GET_PREV(buf);
-	/* If do not have a mapping for prevId, then use current page num. Not correct to use old prevId as no nodes currently have pointers to it anymore. */
-	if (prevId >= PREV_ID_CONSTANT || btreeGetMapping(state, prevId) != currId) // btreeGetMapping(state, prevId) == prevId)
-	{
-		prevId = currId;
-		BTREE_SET_PREV(buf, currId);	
-	}	
-	return prevId;
-}
-
-/**
-@brief     	Updates and fixes mapping after node has been written.
-			Note: If mappings are full, may have to write more nodes (recursively to the root)
-			until are able to have all mappings correct.
-@param     	state
-                btree algorithm state structure
-@param     	prevId
-                Previous node id
-@param     	currId
-                Current node id
-*/
-void btreeFixMappings(btreeState *state, id_t prevId, id_t currId, int16_t l)
-{
-	void *buf;
-	
-	if (btreeAddMapping(state, prevId, currId) == -1 && l >= 0)
-	{	/* Write mapping to next field. */
-	//	buf = readPageBufferNext(state, prevId, 0);	
-//		if (buf == NULL)
-	//		return;
-
-		writeBytes(state->buffer, &currId, sizeof(id_t), prevId, sizeof(id_t)*2);
-		// printf("Wrote next mapping. Prev: %d  Next: %d\n", prevId, currId);
-	}
-	//while (btreeAddMapping(state, prevId, currId) == -1 && l >= 0)
-//	{	/* No more space for mappings. Write all nodes to root until have space for a mapping. */			
-		// printf("No more space for mappings. Num: %d Max: %d\n", state->numMappings, state->maxMappings);
-		
-		/* Write mapping to next field. */
-		/*
-		buf = readPageBufferNext(state, state->activePath[l], 0);	
-		if (buf == NULL)
-			return;
-
-		prevId = btreeUpdatePrev(state, buf, state->activePath[l]);
-		
-		btreeUpdatePointers(state, buf, 0, BTREE_GET_COUNT(buf));	
-		currId = writePage(state->buffer, buf);
-		l--;
-
-		if (l == -1)
-		{	// Wrote new root 
-			state->activePath[0] = currId;			
-			break;	/* Note: Using break here rather than going to top of loop as do not want to add mapping for root. */
-		//}
-	//	*/
-	//}
-}
-
-
-/**
 @brief     	Puts a given key, data pair into structure.
 @param     	state
                 btree algorithm state structure
@@ -563,19 +270,17 @@ int8_t btreePut(btreeState *state, void* key, void *data)
 		return -1;
 	}		
 
-	/* Find insert leaf */
-	/* Starting at root search for key */
+	
 	int8_t 	l;
 	void 	*next, *buf, *ptr;	
-	id_t  	prevId, parent, nextId = state->activePath[0];	
+	id_t  	parent, nextId = state->activePath[0];	
 	int32_t pageNum, childNum;
 
-//	if (*((int32_t*) key) == 608)
-//	 	printf("HERE\n");
-
+	/* Find insert leaf */
+	/* Starting at root search for key */
 	for (l=0; l < state->levels-1; l++)
 	{			
-		buf = readPageNext(state, nextId);		
+		buf = readPage(state->buffer, nextId);		
 
 		// Find the key within the node. Sorted by key. Use binary search. 
 		childNum = btreeSearchNode(state, buf, key, nextId, 1);
@@ -587,7 +292,7 @@ int8_t btreePut(btreeState *state, void* key, void *data)
 	}
 
 	/* Read the leaf node */
-	buf = readPageBufferNext(state, nextId, 0);	/* Note: May want to use readPageBuffer in buffer 0 to prevent any concurrency issues instead of readPage. */
+	buf = readPageBuffer(state->buffer, nextId, 0);	/* Note: Use readPageBuffer in buffer 0 to prevent any concurrency issues instead of readPage. */
 	int16_t count =  BTREE_GET_COUNT(buf); 
 	state->nodeSplitId = nextId;
 
@@ -614,35 +319,20 @@ int8_t btreePut(btreeState *state, void* key, void *data)
 		/* Update count */
 		BTREE_INC_COUNT(buf);	
 
-		/* Write updated page */		
+		/* Write updated page */
+		pageNum = overWritePage(state->buffer, buf, nextId);		
 		if (state->levels == 1)
 		{	/* Wrote to root */
-			state->activePath[0] = overWritePage(state->buffer, buf, nextId);			
+			state->activePath[0] = pageNum;
 		}
-		else
-		{	
-			/* Set previous id in page if does not have one currently */
-			prevId = btreeUpdatePrev(state, buf, nextId);			
-
-			pageNum = overWritePage(state->buffer, buf, nextId);
-
-			/* Add/update mapping */	
-			l=state->levels-2;	
-			btreeFixMappings(state, prevId, pageNum, l);									
-		}
+		
 		return 0;
 	}
 
 	/* Current leaf page is full. Perform split. */
 	int8_t mid = count/2;
 	id_t left, right;
-	state->numNodes++;
-
-	/* Add next pointer to node */
-	
-	/* After split, reset previous node index to unused. */
-	BTREE_SET_PREV(buf, PREV_ID_CONSTANT);
-	BTREE_SET_NEXT(buf, PREV_ID_CONSTANT);
+	state->numNodes++;	
 
 	if (childNum < mid)
 	{	/* Insert key in page with smaller values */
@@ -663,8 +353,7 @@ int8_t btreePut(btreeState *state, void* key, void *data)
 		memcpy(ptr, key, state->keySize);
 		memcpy(ptr + state->keySize, data, state->dataSize);
 
-		left = writePage(state->buffer, buf);	
-		// btreePrintNodeBuffer(state, left, 0, buf);
+		left = overWritePage(state->buffer, buf, nextId);	
 
 		/* Copy buffered record to start of block */
 		memcpy(buf + state->headerSize, state->tempKey, state->keySize);
@@ -675,15 +364,13 @@ int8_t btreePut(btreeState *state, void* key, void *data)
 		
 		BTREE_SET_COUNT(buf, count-mid);
 		right = writePage(state->buffer, buf);
-		// btreePrintNodeBuffer(state, right, 0, buf);
 	}
 	else
 	{	/* Insert key in page with larger values */
 		/* Update count on page then write */
 		BTREE_SET_COUNT(buf, mid+1);
 
-		left = writePage(state->buffer, buf);	
-		// btreePrintNodeBuffer(state, left, 0, buf);
+		left = overWritePage(state->buffer, buf, nextId);	
 
 		/* Buffer key/data record at mid point so do not lose it */
 		if (childNum == mid)
@@ -710,31 +397,25 @@ int8_t btreePut(btreeState *state, void* key, void *data)
 		memcpy(buf + state->headerSize + state->recordSize * (childNum-mid+1), buf + state->headerSize + state->recordSize * (childNum+1), state->recordSize*(count-childNum-1));	
 
 		BTREE_SET_COUNT(buf, count-mid);
-		right = writePage(state->buffer, buf);
-		// btreePrintNodeBuffer(state, right, 0, buf);
+		right = writePage(state->buffer, buf);		
 	}		
 
 	/* Recursively add pointer to parent node. */
 	for (l=state->levels-2; l >=0; l--)
 	{		
-		parent = state->activePath[l];
-		/* Special case with memory wrap: Parent node may have been moved due to memory operations in between previous writes. Check mapping to verify it is correct. */
-		parent = btreeGetMapping(state, parent);
-		state->nodeSplitId = parent;
+		parent = state->activePath[l];				
 
 		// printf("Here: Left: %d  Right: %d Key: %d  Parent: %d", left, right, *((int32_t*) state->tempKey), parent);
 
 		/* Read parent node */
-		buf = readPageBufferNext(state, parent, 0);			/* Forcing read to buffer 0 even if buffered in another buffer as will modify this page. */
+		buf = readPageBuffer(state->buffer, parent, 0);			/* Forcing read to buffer 0 even if buffered in another buffer as will modify this page. */
 		if (buf == NULL)
 			return -1;				
 
 		int16_t count =  BTREE_GET_COUNT(buf); 
 		if (count < state->maxInteriorRecordsPerPage)
 		{	/* Space for key/pointer in page */
-			childNum = btreeSearchNode(state, buf, state->tempKey, parent, 1);
-
-			btreeUpdatePointers(state, buf, 0, count);			
+			childNum = btreeSearchNode(state, buf, state->tempKey, parent, 1);		
 	
 			/* Note: memcpy with overlapping ranges. May be an issue on some platforms */
 			ptr = buf + state->headerSize + state->keySize * (childNum);
@@ -754,36 +435,20 @@ int8_t btreePut(btreeState *state, void* key, void *data)
 
 			BTREE_INC_COUNT(buf);			
 
-			/* Write page */
-			/* Set previous id in page if does not have one currently */
-			prevId = btreeUpdatePrev(state, buf, parent);				
-			
+			/* Write page */			
 			pageNum = overWritePage(state->buffer, buf, parent);
-			// pageNum = writePage(state->buffer, buf);
-			// btreePrintNodeBuffer(state, pageNum, 0, buf);
-
+			
 			if (l == 0)
 			{	/* Update root */
 				state->activePath[0] = pageNum;
-
-			}
-			else
-			{	/* Add a mapping for new page location */								
-				l--;
-				// btreeFixMappings(state, prevId, pageNum, l);											
-			}
+			}			
 
 			return 0;
 		}
 
 		/* No space. Split interior node and promote key/pointer pair */
-		// printf("Splitting interior node.\n");
 		state->numNodes++;
-
-		/* After split, reset previous node index to unassigned. */
-		BTREE_SET_PREV(buf, PREV_ID_CONSTANT);
-		BTREE_SET_NEXT(buf, PREV_ID_CONSTANT);
-
+		
 		childNum = -1;
 		if (count > 0)
 			childNum = btreeSearchNode(state, buf, state->tempKey, parent, 1);
@@ -796,7 +461,6 @@ int8_t btreePut(btreeState *state, void* key, void *data)
 				mid--;	/* Note: If count is odd, then first node will have extra key/pointer */
 			BTREE_SET_COUNT(buf, mid + 1);	 			
 			BTREE_SET_INTERIOR(buf);  
-			btreeUpdatePointers(state, buf, 0, count);
 
 			/* Buffer key/pointer record at mid point so do not lose it */
 			/* TODO: Using tempData here as already using tempKey. This would be a problem if data size is < key size. */
@@ -823,7 +487,7 @@ int8_t btreePut(btreeState *state, void* key, void *data)
 			memcpy(ptr, &left, sizeof(id_t));
 			memcpy(ptr + sizeof(id_t), &right, sizeof(id_t));
 
-			left = writePage(state->buffer, buf);				
+			left = overWritePage(state->buffer, buf, parent);				
 					
 			/* Copy buffered pointer to start of block */			
 			ptr = buf + state->headerSize + state->keySize * state->maxInteriorRecordsPerPage;
@@ -835,7 +499,7 @@ int8_t btreePut(btreeState *state, void* key, void *data)
 			
 			BTREE_SET_COUNT(buf, count-mid-1);
 			BTREE_SET_INTERIOR(buf);
-			// btreeUpdatePointers(state, buf, 0, count-mid-1);
+
 			right = writePage(state->buffer, buf);			
 
 			/* Keep temporary key (move from temp data) */
@@ -845,8 +509,7 @@ int8_t btreePut(btreeState *state, void* key, void *data)
 		{	/* Insert key/pointer in page with larger values */
 			/* Update count on page then write */
 			BTREE_SET_COUNT(buf, mid);
-			BTREE_SET_INTERIOR(buf);
-			btreeUpdatePointers(state, buf, 0, count);						
+			BTREE_SET_INTERIOR(buf);					
 
 			ptr = buf + state->headerSize + state->keySize * state->maxInteriorRecordsPerPage;
 			if (childNum == mid)
@@ -863,8 +526,7 @@ int8_t btreePut(btreeState *state, void* key, void *data)
 			id_t tempPtr;
 			memcpy(&tempPtr, buf + state->headerSize + state->keySize * state->maxInteriorRecordsPerPage + sizeof(id_t) * (mid+1), sizeof(id_t));
 			
-			id_t tmpLeft = writePage(state->buffer, buf);	
-			// btreePrintNodeBuffer(state, tmpLeft, 0, buf);
+			id_t tmpLeft = overWritePage(state->buffer, buf, parent);				
 						
 			/* New split page starts off with original page in buffer. Copy records around as required. */
 			/* Copy records before insert point into front of block from current location in block */			
@@ -873,8 +535,7 @@ int8_t btreePut(btreeState *state, void* key, void *data)
 				memcpy(buf + state->headerSize, buf + state->headerSize + state->keySize * (mid+1), state->keySize*(childNum-mid-1));	
 				memcpy(ptr, ptr + sizeof(id_t) * (mid+1), sizeof(id_t)*(childNum-mid-1));		
 			}	  
-	 
-			
+	 			
 			if (childNum > mid)
 			{
 				/* Copy record onto page */
@@ -893,10 +554,8 @@ int8_t btreePut(btreeState *state, void* key, void *data)
 	
 			BTREE_SET_COUNT(buf, count-mid);
 			BTREE_SET_INTERIOR(buf);
-			// btreeUpdatePointers(state, buf, 0, count-mid);
 
 			right = writePage(state->buffer, buf);
-			// btreePrintNodeBuffer(state, right, 0, buf);
 
 			/* Keep temporary key (move from temp data) */
 			left = tmpLeft;
@@ -908,9 +567,7 @@ int8_t btreePut(btreeState *state, void* key, void *data)
 	/* Create new root node with the two pointers */
 	buf = initBufferPage(state->buffer, 0);	
 	BTREE_SET_COUNT(buf, 1);
-	BTREE_SET_ROOT(buf);		
-	BTREE_SET_PREV(buf, PREV_ID_CONSTANT);		/* TODO: Determine if need to set previous pointer to state->activePath[0] (previous root). */
-	BTREE_SET_NEXT(buf, PREV_ID_CONSTANT);
+	BTREE_SET_ROOT(buf);			
 	state->numNodes++;
 	
 	/* Add key and two pointers */
@@ -1036,9 +693,7 @@ id_t getChildPageId(btreeState *state, void *buf, id_t pageId, int8_t level, id_
 	id_t nextId = *((id_t*) (buf + state->headerSize + state->keySize*state->maxInteriorRecordsPerPage + sizeof(id_t)*childNum));
 	if (nextId == 0 && childNum==(BTREE_GET_COUNT(buf)))	/* Last child which is empty */
 		return -1;
-
-	/* Perform mapping */	
-	nextId = btreeGetMapping(state, nextId);
+	
 	return nextId;
 }
 
@@ -1063,7 +718,7 @@ int8_t btreeGet(btreeState *state, void* key, void *data)
 	
 	for (l=0; l < state->levels-1; l++)
 	{		
-		buf = readPageNext(state, nextId);		
+		buf = readPage(state->buffer, nextId);		
 
 		/* Find the key within the node. Sorted by key. Use binary search. */
 		childNum = btreeSearchNode(state, buf, key, nextId, 0);
@@ -1073,7 +728,7 @@ int8_t btreeGet(btreeState *state, void* key, void *data)
 	}
 
 	/* Search the leaf node and return search result */
-	buf = readPageNext(state, nextId);
+	buf = readPage(state->buffer, nextId);
 	if (buf == NULL)
 		return -1;
 	nextId = btreeSearchNode(state, buf, key, nextId, 0);
@@ -1084,42 +739,6 @@ int8_t btreeGet(btreeState *state, void* key, void *data)
 	}
 	return -1;
 }
-
-/**
-@brief     	Flushes output buffer.
-@param     	state
-                btree algorithm state structure
-*/
-int8_t btreeFlush(btreeState *state)
-{
-	/* TODO: Needs to be implemented. There is currently no output write buffer. Each write is done immediately. */
-	// int32_t pageNum = writePage(state->buffer, state->writeBuffer);	
-
-	/* Add pointer to page to B-tree structure */		
-	/* So do not have to allocate memory. Use the next key value in the buffer temporarily to store a MAX_KEY of all 1 bits */	
-	/* Need to copy key from current write buffer as will reuse buffer */
-	/*
-	memcpy(state->tempKey, (void*) (state->buffer+state->headerSize), state->keySize); 	
-	void *maxkey = state->buffer + state->recordSize * BTREE_GET_COUNT(state->buffer) + state->headerSize;
-	memset(maxkey, 1, state->keySize);
-	 btreeUpdateIndex(state, state->tempKey, maxkey, pageNum);
-	*/
-	// TODO: Look at what the key should be when flush. Needs to be one bigger than data set 
-
-	// void *maxkey = state->writeBuffer + state->recordSize * (BTREE_GET_COUNT(state->writeBuffer)-1) + state->headerSize;
-	// int32_t mkey = *((int32_t*) maxkey)+1;
-	// maxkey = state->writeBuffer + state->headerSize;
-	// int32_t minKey = *((int32_t*) maxkey);
-//	if (btreeUpdateIndex(state, &minKey, &mkey, pageNum) != 0)
-//		return -1;
-		
-	// fflush(state->buffer->file);
-
-	/* Reinitialize buffer */
-	// initBufferPage(state->buffer, 0);
-	return 0;
-}
-
 
 /**
 @brief     	Initialize iterator on btree structure.
@@ -1140,7 +759,7 @@ void btreeInitIterator(btreeState *state, btreeIterator *it)
 	for (l=0; l < state->levels-1; l++)
 	{		
 		it->activeIteratorPath[l] = nextId;		
-		buf = readPageNext(state, nextId);		
+		buf = readPage(state->buffer, nextId);		
 
 		/* Find the key within the node. Sorted by key. Use binary search. */
 		childNum = btreeSearchNode(state, buf, it->minKey, nextId, 1);
@@ -1153,7 +772,7 @@ void btreeInitIterator(btreeState *state, btreeIterator *it)
 
 	/* Search the leaf node and return search result */
 	it->activeIteratorPath[l] = nextId;	
-	buf = readPageNext(state, nextId);
+	buf = readPage(state->buffer, nextId);
 	it->currentBuffer = buf;
 	childNum = btreeSearchNode(state, buf, it->minKey, nextId, 1);		
 	it->lastIterRec[l] = childNum;
@@ -1193,7 +812,7 @@ int8_t btreeNext(btreeState *state, btreeIterator *it, void **key, void **data)
 				/* Advance to next page. Requires examining active path. */
 				for (l=state->levels-2; l >= 0; l--)
 				{	
-					buf = readPageNext(state, it->activeIteratorPath[l]);
+					buf = readPage(state->buffer, it->activeIteratorPath[l]);
 					if (buf == NULL)
 						return 0;						
 
@@ -1218,7 +837,7 @@ int8_t btreeNext(btreeState *state, btreeIterator *it, void **key, void **data)
 						return 0;	
 					
 					it->activeIteratorPath[l+1] = nextPage;
-					buf = readPageNext(state, nextPage);
+					buf = readPage(state->buffer, nextPage);
 					if (buf == NULL)
 						return 0;	
 				}
@@ -1279,7 +898,7 @@ int8_t btreeIsValid(void *statePtr, id_t pageNum, id_t *parentId, void **parentB
 	*parentBuffer = NULL;
 
 	/* Search to see if page is still in tree */
-	void *buf = readPageNext(state, pageNum);
+	void *buf = readPage(state->buffer, pageNum);
 	if (buf == NULL)
 		return -1;
 
@@ -1298,11 +917,9 @@ int8_t btreeIsValid(void *statePtr, id_t pageNum, id_t *parentId, void **parentB
 	if (nextId == pageNum)
 		return -1;		
 
-	id_t mapId = btreeGetMapping(state, pageNum);
-
 	for (l=0; l < state->levels-1; l++)
 	{		
-		buf = readPageNext(state, nextId);		
+		buf = readPage(state->buffer, nextId);		
 
 		/* Find the key within the node. */
 		childNum = btreeSearchNode(state, buf, &key, nextId, 0);
@@ -1310,9 +927,7 @@ int8_t btreeIsValid(void *statePtr, id_t pageNum, id_t *parentId, void **parentB
 		*parentBuffer = buf;
 		nextId = getChildPageId(state, buf, nextId, l, childNum);
 		if (nextId == pageNum)						
-			return 0;		/* Page is valid page currently in tree */
-		if (mapId != pageNum && mapId == nextId)
-			return 1;		/* Page is no longer valid, but a mapping exists from the original page number to a new page */
+			return 0;		/* Page is valid page currently in tree */		
 		if (nextId == -1)
 			break;
 	}
@@ -1335,27 +950,5 @@ int8_t btreeIsValid(void *statePtr, id_t pageNum, id_t *parentId, void **parentB
 */
 void btreeMovePage(void *state, id_t prev, id_t curr, void *buf)
 {
-	btreePrintNodeBuffer(state, prev, 0, buf);
-	/* Update the mapping. */
-	if (BTREE_IS_INTERIOR(buf))
-	{
-		printf("Updating mappings.\n");		
-		btreeUpdatePointers(state, buf, 0, BTREE_GET_COUNT(buf));
-		btreePrintNodeBuffer(state, prev, 0, buf);
-	}
-
-	if (((btreeState*) state)->activePath[0] == prev)
-	{	/* Modified root location */
-		((btreeState*) state)->activePath[0] = curr;
-	}
-	else
-	{
-		prev = btreeUpdatePrev(state, buf, prev);
-		/* TODO: Handle case when not enough mapping space. */
-		if (btreeAddMapping(state, prev, curr) == -1)
-		{
-			printf("ERROR: Ran out of mapping space.\n");
-		}
-	}
-	btreePrintMappings(state);
+	
 }

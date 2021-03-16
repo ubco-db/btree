@@ -52,16 +52,12 @@ typedef uint32_t id_t;
 typedef uint16_t count_t;
 
 /* Offsets with header */
-#define BTREE_COUNT_OFFSET		sizeof(id_t)*3
+#define BTREE_COUNT_OFFSET		sizeof(id_t)
 
 /* MOD 10000 to remove any flags in count that are set above 10000 */
 #define BTREE_GET_ID(x)  		*((id_t *) (x)) 
-#define BTREE_GET_PREV(x)		*((id_t *) (x+sizeof(id_t))) 
-#define BTREE_GET_NEXT(x)		*((id_t *) (x+sizeof(id_t)*2)) 
 #define BTREE_GET_COUNT(x)  	*((count_t *) (x+BTREE_COUNT_OFFSET)) % 10000
 #define BTREE_SET_ID(x,y)  		*((id_t *) (x)) = y
-#define BTREE_SET_PREV(x,y)  	*((id_t *) (x+sizeof(id_t))) = y
-#define BTREE_SET_NEXT(x,y)  	*((id_t *) (x+sizeof(id_t)*2)) = y
 #define BTREE_SET_COUNT(x,y)  	*((count_t *) (x+BTREE_COUNT_OFFSET)) = y
 #define BTREE_INC_COUNT(x)  	*((count_t *) (x+BTREE_COUNT_OFFSET)) = *((count_t *) (x+BTREE_COUNT_OFFSET))+1
 #define BTREE_GET_VALID(x)		( *((id_t *) (x)) > 10000000 : 0 : 1)

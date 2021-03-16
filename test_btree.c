@@ -152,7 +152,7 @@ void runalltests_btree()
        // printf("\n****STARTING KEY: %d\n",v);
         // btreePrint(state);    
 /*
-        if (v == 400 || v == 151)       
+        if (v == 375 || v == 151)       
         {
             printf("KEY: %d\n",v);
             btreePrint(state);    
@@ -165,8 +165,7 @@ void runalltests_btree()
 
         if (btreePut(state, recordBuffer, (void*) (recordBuffer + 4)) == -1)
         {  
-            btreePrint(state);   
-            btreePrintMappings(state);
+            btreePrint(state);               
             printf("INSERT ERROR: %d\n", v);
             return;
         }
@@ -187,15 +186,13 @@ void runalltests_btree()
         if (i % 1000 == 0)
         {           
             printf("Num: %d KEY: %d\n", i, v);
-           //  btreePrint(state);   
-            // btreePrintMappings(state);
+            //btreePrint(state);               
         }        
     }    
 
     clock_t end = clock();   
 
-    btreePrint(state); 
-    btreePrintMappings(state);
+    btreePrint(state);     
     
     printStats(state->buffer);
 

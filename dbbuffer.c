@@ -52,7 +52,7 @@ void dbbufferInit(dbbuffer *state)
 	state->nextPageId = 0;
 	state->nextPageWriteId = 0;
 	state->wrappedMemory = 0;	
-	state->endDataPage = (state->endAddress-state->startAddress) / state->pageSize -1;
+	
 
 	state->numReads = 0;
 	state->numWrites = 0;
@@ -367,7 +367,7 @@ finderase:
 
 			for (id_t i=startErase; i <= endErase; i++)
 			{
-				int8_t response = state->isValid(state->state, i, &parentId, &parentBuffer);
+				int8_t response = -1; // state->isValid(state->state, i, &parentId, &parentBuffer);
 				// printf("Status page: %d  Status: %d\n", i, response);
 				if (response == -1)
 					continue;
@@ -418,22 +418,21 @@ finderase:
 				/* Write parent so does not have mapping to previous page */
 				/* Read parent page */
 				parentId = parentIdToMove[i];
-				if (btreeGetMapping(state->state, parentId) != parentId)
+				//if (btreeGetMapping(state->state, parentId) != parentId)
 				{	/* Node has already been moved. Do not move it. Remove mapping. */
 					printf("Skipping parent page: %d\n", parentId);
-					btreeDeleteMapping(state->state, parentId);
+					// btreeDeleteMapping(state->state, parentId);
 					continue;
 				}
 				printf("Writing parent page: %d\n", parentId);
-				if (parentId == 37)
-					printf("HERE\n");
+			
 				void *bufParent = readPage(state, parentId);
 				if (bufParent != NULL)
 				{
 					pageNum = state->nextPageWriteId++;
 					
 					/* Update page */
-					id_t prevId = btreeUpdatePrev(state->state, bufParent, parentId);
+					id_t prevId = 0; /// btreeUpdatePrev(state->state, bufParent, parentId);
 					state->movePage(state->state, parentId, pageNum, bufParent);	
 
 					/* Update page */
@@ -444,7 +443,7 @@ finderase:
 
 					btreePrintNodeBuffer(state->state, pageNum, 0, bufParent);
 
-					btreePrintMappings(state->state);
+					// btreePrintMappings(state->state);
 				}															
 			}
 		}

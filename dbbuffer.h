@@ -53,7 +53,7 @@ typedef struct {
 	void  	*buffer;				/* Allocated memory for buffer */
 	count_t	pageSize;				/* Size of buffer page */
 	count_t	numPages;				/* Number of buffer pages */    
-	FILE 	*file;					/* File for storing data records. TODO: Will be replaced with RAW memory access routines. */
+	FILE 	*file;					/* File for storing data records. */
 	id_t 	startAddress;			/* Start address in memory space */
 	id_t 	endAddress;				/* End address in memory space */
 	count_t eraseSizeInPages;		/* Erase size in pages */
