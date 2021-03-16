@@ -50,9 +50,7 @@ void dbbufferInit(dbbuffer *state)
 	
 	/* TODO: These values would be set during recovery if database already exists. */
 	state->nextPageId = 0;
-	state->nextPageWriteId = 0;
-	state->wrappedMemory = 0;	
-	
+	state->nextPageWriteId = 0;		
 
 	state->numReads = 0;
 	state->numWrites = 0;
@@ -60,12 +58,8 @@ void dbbufferInit(dbbuffer *state)
 	state->bufferHits = 0;
 	state->lastHit = 0;
 	state->nextBufferPage = 1;
-
-	/* Erase first two blocks. */
-	erasePages(state, 0, state->eraseSizeInPages*2-1);
-	state->blockEndPage = state->eraseSizeInPages-1;	
-	state->erasedStartPage = state->blockEndPage+1;
-
+	
+	/* Clear buffer status flags */
 	for (count_t l=0; l < state->numPages; l++)
 		state->status[l] = 0;	
 }
@@ -178,22 +172,6 @@ void* readPageBuffer(dbbuffer *state, id_t pageNum, count_t bufferNum)
     state->numReads++;
 	   
 	return buf;
-}
-
-/**
-@brief      Erases physical pages start to end inclusive. Assumes that start and end are aligned according to erase block.
-@param     	state
-               	DBbuffer state structure
-@param     	startPage
-                Physical index of start page
-@param     	endPage
-				Physical index of start page
-@return		Return 0 if success, -1 if failure.
-*/
-int8_t erasePages(dbbuffer *state, id_t startPage, id_t endPage)
-{
-	// printf("Erasing pages. Start: %d  End: %d\n", startPage, endPage);
-	/* TODO: Not doing anything for file. */
 }
 
 /**
@@ -319,142 +297,9 @@ int32_t overWritePage(dbbuffer *state, void* buffer, int32_t pageNum)
 int32_t writePage(dbbuffer *state, void* buffer)
 {    		
 	int32_t pageNum;
-
-	/* Determine physical page location. */
-	while (state->nextPageWriteId == state->blockEndPage)
-	{		
-		id_t startErase, endErase;
-
-		/* At end of block */
-		/* Advance end of erasedEndPage */
-		if (state->blockEndPage >= state->endDataPage)
-		{	// state->blockEndPage = -1;
-			state->nextPageWriteId = 0;
-		}
-		else
-		{
-			state->nextPageWriteId = state->erasedStartPage;
-		}
-		state->blockEndPage = state->erasedStartPage + state->eraseSizeInPages - 1;
-		
-finderase:
-		
-		state->erasedStartPage += state->eraseSizeInPages;
-		startErase = state->erasedStartPage-state->eraseSizeInPages+state->eraseSizeInPages;
-		endErase = state->erasedStartPage+state->eraseSizeInPages-1;
-		
-		
-		if (endErase > state->endDataPage)
-		{	/* At end of memory region. Must wrap around */
-			state->wrappedMemory = 1;
-
-			startErase = 0;
-			endErase = state->eraseSizeInPages-1;
-			state->erasedStartPage = 0;
-		}		
-
-		if (state->wrappedMemory != 0)
-		{	/* Have went through memory at least once. Whatever is erased is actual data that is no longer available. */
-			// printf("Must move pages between: %d and %d\n", startErase, endErase);
-			if (startErase == 20)
-				printf("a\n");
-			/* TODO: Check for valid pages just beyond erasedEndPage and copy to the currently erased block if necessary */
-			id_t parentId, newIdx;
-			void *parentBuffer;
-			count_t numMove = 0;
-			int32_t pageIdToMove[10];		/* TODO: Should be size of erase size */
-			id_t parentIdToMove[10];
-
-			for (id_t i=startErase; i <= endErase; i++)
-			{
-				int8_t response = -1; // state->isValid(state->state, i, &parentId, &parentBuffer);
-				// printf("Status page: %d  Status: %d\n", i, response);
-				if (response == -1)
-					continue;
-
-				if (response == 1)
-				{	/* Mapping but no valid node. Must update parent but not the node itself. */
-					pageIdToMove[numMove] = -1;
-				}
-				else
-				{	/* Valid node at this location. Must rewrite node and its parent. */
-					pageIdToMove[numMove] = i;
-				}
-				
-				parentIdToMove[numMove] = parentId;
-				numMove++;
-			}
-
-			if (numMove >= state->eraseSizeInPages/2)
-			{
-				// printf("Skipping pages and leaving as is. Start: %d End: %d\n", startErase, endErase);				
-				// state->erasedStartPage += state->eraseSizeInPages;
-				goto finderase;
-				/* TODO: How to skip over full blocks */
-			}
-
-			for (id_t i=0; i < numMove; i++)
-			{			
-				if (pageIdToMove[i] != -1)
-				{	/* Must move page */
-					// printf("Moving page: %d\n", pageIdToMove[i]);
-				
-					/* Read page */
-					void *buf = readPage(state, pageIdToMove[i]);
-					if (buf != NULL)
-					{
-						pageNum = state->nextPageWriteId++;
-
-						/* Update page */
-						state->movePage(state->state, pageIdToMove[i], pageNum, buf);
-
-						/* Write page */
-						writePageDirect(state, buf, pageNum);
-
-						btreePrintNodeBuffer(state->state, pageNum, 0, buf);
-					}
-				}
-				
-				/* Write parent so does not have mapping to previous page */
-				/* Read parent page */
-				parentId = parentIdToMove[i];
-				//if (btreeGetMapping(state->state, parentId) != parentId)
-				{	/* Node has already been moved. Do not move it. Remove mapping. */
-					printf("Skipping parent page: %d\n", parentId);
-					// btreeDeleteMapping(state->state, parentId);
-					continue;
-				}
-				printf("Writing parent page: %d\n", parentId);
-			
-				void *bufParent = readPage(state, parentId);
-				if (bufParent != NULL)
-				{
-					pageNum = state->nextPageWriteId++;
-					
-					/* Update page */
-					id_t prevId = 0; /// btreeUpdatePrev(state->state, bufParent, parentId);
-					state->movePage(state->state, parentId, pageNum, bufParent);	
-
-					/* Update page */
-					// state->movePage(state->state, i, pageNum, bufParent);
-
-					/* Write page */
-					writePageDirect(state, bufParent, pageNum);
-
-					btreePrintNodeBuffer(state->state, pageNum, 0, bufParent);
-
-					// btreePrintMappings(state->state);
-				}															
-			}
-		}
-		
-		/* Erase the next erase block */
-		erasePages(state, startErase, endErase);
-		// erasePages(state, state->erasedEndPage-state->eraseSizeInPages+1+state->eraseSizeInPages, state->erasedEndPage+state->eraseSizeInPages);
-	}
 	
+	/* TODO: Handle when get to end of file? */
 	pageNum = state->nextPageWriteId++;
-	// vmtreePrintNodeBuffer(state->state, pageNum, 0, buffer);
 	return writePageDirect(state, buffer, pageNum);	
 }
 
@@ -470,7 +315,7 @@ finderase:
 void* initBufferPage(dbbuffer *state, int pageNum)
 {	
 	/* Insure all values are 0 in page. */
-	/* TODO: May want to initialize to all 1s for certian memory types. */	
+	/* TODO: May want to initialize to all 1s for certain memory types. */	
 	void *buf = state->buffer + pageNum * state->pageSize;
 	for (uint16_t i = 0; i < state->pageSize/sizeof(int32_t); i++)
     {

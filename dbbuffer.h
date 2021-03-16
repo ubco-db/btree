@@ -53,14 +53,7 @@ typedef struct {
 	void  	*buffer;				/* Allocated memory for buffer */
 	count_t	pageSize;				/* Size of buffer page */
 	count_t	numPages;				/* Number of buffer pages */    
-	FILE 	*file;					/* File for storing data records. */
-	id_t 	startAddress;			/* Start address in memory space */
-	id_t 	endAddress;				/* End address in memory space */
-	count_t eraseSizeInPages;		/* Erase size in pages */
-	id_t 	endDataPage;			/* End data page number */		
-	id_t 	blockEndPage;			/* Physical page number of last block erased page */	
-	id_t	erasedStartPage;		/* Physical page number of first page in next erased block */	
-	int8_t 	wrappedMemory;			/* 1 if have wrapped around in memory, 0 otherwise */
+	FILE 	*file;					/* File for storing data records. */		
 	id_t 	nextPageId;				/* Next logical page id. Page id is an incrementing value and may not always be same as physical page id. */
 	id_t 	nextPageWriteId;		/* Physical page id of next page to write. */	
 	id_t 	numWrites;				/* Number of page writes */
@@ -70,9 +63,7 @@ typedef struct {
 	count_t lastHit;				/* Buffer id of last buffer page hit */
 	count_t nextBufferPage;			/* Next page buffer id to use. Round robin */
 	id_t 	*activePath;			/* Active path on insert. Also contains root. Helps to prioritize. */
-	void	*state;					/* Tree state */
-	int8_t (*isValid)(void *state, id_t pageNum, id_t *parentId, void **parentBuffer);	/* Function to determine if page is valid */
-	void 	(*movePage)(void *state, id_t prev, id_t curr, void* buf);					/* Function called when buffer moves a page location */
+	void	*state;					/* Tree state */	
 } dbbuffer;
 
 /**

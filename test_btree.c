@@ -90,12 +90,7 @@ void runalltests_btree()
     buffer->numPages = M;
     buffer->status = malloc(sizeof(id_t)*M);
     buffer->buffer  = malloc((size_t) buffer->numPages * buffer->pageSize);   
-
-    /* Address level parameters */
-    buffer->startAddress = 0;
-	buffer->endAddress = buffer->pageSize * 48000;	
-	buffer->eraseSizeInPages = 4;
-
+   
     /* Configure btree state */
     btreeState* state = malloc(sizeof(btreeState));
 
@@ -105,9 +100,7 @@ void runalltests_btree()
 
     /* Connections betwen buffer and btree */
     buffer->activePath = state->activePath;
-    buffer->state = state;
-    buffer->isValid = btreeIsValid;
-    buffer->movePage = btreeMovePage;
+    buffer->state = state;    
 
     state->tempKey = malloc(sizeof(int32_t)); 
     state->tempData = malloc(12); 

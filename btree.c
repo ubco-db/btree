@@ -264,12 +264,13 @@ void btreePrint(btreeState *state)
 int8_t btreePut(btreeState *state, void* key, void *data)
 {
 	/* Check for capacity. TODO: Determine proper cutoff. For now, number of nodes must be less than total possible nodes - 50% */
+	/*
 	if (state->numNodes >= state->buffer->endDataPage*0.5)
 	{
 		printf("Storage is at capacity. Must delete keys.\n");
 		return -1;
 	}		
-
+	*/
 	
 	int8_t 	l;
 	void 	*next, *buf, *ptr;	
