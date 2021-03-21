@@ -48,7 +48,6 @@ void dbbufferInit(dbbuffer *state)
 	printf("Initializing buffer.\n");
 	printf("Buffer size: %d  Page size: %d\n", state->numPages, state->pageSize);			
 	
-	/* TODO: These values would be set during recovery if database already exists. */
 	state->nextPageId = 0;
 	state->nextPageWriteId = 0;		
 
@@ -63,6 +62,54 @@ void dbbufferInit(dbbuffer *state)
 	for (count_t l=0; l < state->numPages; l++)
 		state->status[l] = 0;	
 }
+
+/**
+@brief     	Initializes buffer and recovers previous state from storage.
+@param     	state
+                DBbuffer state structure
+*/
+void dbbufferRecover(dbbuffer *state)
+{
+	dbbufferInit(state);
+
+	printf("Recovering from storage.\n");	
+	
+	/* Scan file from end to determine the page with root */
+	FILE* fp = state->file;
+      
+	fseek(fp, 0, SEEK_END); 
+
+	uint32_t loc = ftell(fp);
+
+	/* Set next buffer page to write */
+	state->nextPageWriteId = loc / state->pageSize;	
+	state->nextPageId = state->nextPageWriteId;
+	
+	for (id_t p = state->nextPageWriteId-1; p >= 0; p--)
+	{		
+		void *buf = readPage(state, p);
+		if (buf == NULL)
+			break;
+		if (BTREE_IS_ROOT(buf))
+		{
+			printf("Found root at: %lu\n", p);
+			state->activePath[0] = p;
+			return;
+		}
+	}
+
+	printf("Creating new file.\n");
+
+	/* Otherwise assume no root. Create new file. */
+	state->nextPageId = 0;
+	state->nextPageWriteId = 0;	
+
+	/* Create and write empty root node */	
+	void *buf = initBufferPage(state->buffer, 0);	
+	BTREE_SET_ROOT(buf);		
+	state->activePath[0] = writePage(state->buffer, buf);		/* Store root location */				
+}
+
 
 /**
 @brief      Reads page to a particular buffer number. Returns pointer to buffer if success.
@@ -232,9 +279,7 @@ int32_t writeBytes(dbbuffer *state, void* buffer, count_t size, int32_t pageNum,
                 test_record_t *buf = (void *)(buffer + state->headerSize + k * state->recordSize);
                 printf("%d: Output Record: %d\n", k, buf->key);
             }
-	#endif
-
-	// state->numWrites++;		
+	#endif	
 	
 	// printf("\nWrite bytes page: %d Id: %d Key: %d\n", pageNum, (state->nextPageId-1), *((int32_t*) (buffer+10)));
 	return pageNum;
@@ -306,12 +351,15 @@ int32_t overWritePage(dbbuffer *state, void* buffer, int32_t pageNum)
 	
 	/* Check if buffer contains this page */
 	for (count_t i=1; i < state->numPages; i++)
-	{		
+	{				
 		if (state->status[i] == pageNum && pageNum != 0)
 		{	/* Copy over page */
+			if (state->buffer + i*state->pageSize == buffer)
+				break;
+			
 			memcpy(state->buffer + i*state->pageSize, buffer, state->pageSize);
-			// Other choice is to clear the buffer
-			// state->status[i] = 0;			
+			/* Other choice is to clear the buffer: state->status[i] = 0; */
+			break;
 		}
 	}
 
@@ -380,4 +428,17 @@ void printStats(dbbuffer *state)
 	printf("Buffer hits: %d\n", state->bufferHits);
 	printf("Num writes: %d\n", state->numWrites);
 	printf("Num overwrites: %d\n", state->numOverWrites);
+}
+
+/**
+@brief     	Clears statistics.
+@param     	state
+                DBbuffer state structure
+*/
+void dbbufferClearStats(dbbuffer *state)
+{
+	state->numReads = 0;
+	state->numWrites = 0;
+	state->bufferHits = 0;
+	state->numOverWrites = 0;
 }
