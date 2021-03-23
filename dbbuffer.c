@@ -5,6 +5,7 @@
 @brief		Light-weight buffer implementation for small embedded devices.
 @copyright	Copyright 2021
 			The University of British Columbia,		
+			Ramon Lawrence
 @par Redistribution and use in source and binary forms, with or without
 	modification, are permitted provided that the following conditions are met:
 
