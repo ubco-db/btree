@@ -11,8 +11,7 @@ The B-tree implementation has the following benefits:
 
 ## Code Files
 
-* test_btree.h - test file demonstrating how to get, put, and iterate through data in B-tree
-* main.cpp - main Arduino code file
+* test_btree.c - test file demonstrating how to get, put, and iterate through data in B-tree
 * btree.h, btree.c - implementation of B-tree supporting arbitrary key-value data items
 * dbbuffer.h, dbbuffer.c - provides interface with SD card and buffering of pages in memory
 
