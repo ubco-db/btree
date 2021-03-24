@@ -342,7 +342,7 @@ void runalltests_btree()
         // btreePrint(state);             
         printStats(state->buffer);
 
-        printf("Elapsed Time: %lu ms\n", (end - start));
+        printf("Elapsed Time: %lu ms\n", times[l][r]);
         printf("Records inserted: %lu\n", n);
 
         /* Clear stats */
@@ -393,8 +393,8 @@ void runalltests_btree()
             printf("SUCCESS. All values found!\n");
         
         end = clock();
-        printf("Elapsed Time: %lu ms\n", (end - start));
-        printf("Records queried: %d\n", n);   
+        printf("Elapsed Time: %lu ms\n", rtimes[l][r]);
+        printf("Records queried: %lu\n", n);   
         printStats(state->buffer);     
 
         /* Optional: Test iterator */
