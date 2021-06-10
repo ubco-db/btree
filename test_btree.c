@@ -218,7 +218,7 @@ void runalltests_btree()
     uint32_t rreads[numSteps][numRuns];
     uint32_t rhits[numSteps][numRuns];
 
-    int8_t M = 2;  
+    int8_t M = 3;  
 
     /* Optional: Test recovery. Must run main test first to generate B-tree file. */
     // testRecovery();
@@ -294,12 +294,11 @@ void runalltests_btree()
             recordBuffer[i + sizeof(int32_t)] = 0;
         }
 
-        unsigned long start = clock();
-    
         srand(r);
         randomseqInit(&rnd);
     
-        
+        unsigned long start = clock();
+
         for (i = 1; i <= n ; i++)
         {           
             id_t v = randomseqNext(&rnd);
@@ -351,7 +350,7 @@ void runalltests_btree()
         printf("\nVerifying and searching for all values.\n");
         start = clock();
 
-        srand(1);
+        srand(r);
         randomseqInit(&rnd);
 
         /* Verify that can find all values inserted */    
